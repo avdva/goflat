@@ -11,17 +11,24 @@ type testStruct struct {
 	A int
 	B uint64
 	S struct {
-		D   string
-		Ptr *int
-		M   map[string]int
+		D              string
+		Ptr            *int
+		M              map[string]int
+		notExportedMap map[string]string
 	}
 	Nested nested
 	embedded
-	Iface  privateInterface
-	PtrPtr **int
-	M      *map[string]string
-	Slice  []float64
-	Array  [3]float32
+	Iface             privateInterface
+	PtrPtr            **int
+	M                 *map[string]string
+	Slice             []float64
+	Array             [3]float32
+	notExportedInt    int
+	notExportedIface  privateInterface
+	notExportedStruct struct {
+		A int
+	}
+	notExportedPointer *string
 }
 
 type embedded struct {
@@ -52,14 +59,18 @@ func newTestStruct() *testStruct {
 		A: 5,
 		B: 6,
 		S: struct {
-			D   string
-			Ptr *int
-			M   map[string]int
+			D              string
+			Ptr            *int
+			M              map[string]int
+			notExportedMap map[string]string
 		}{
 			D:   "D",
 			Ptr: ptr,
 			M: map[string]int{
 				"k": 123,
+			},
+			notExportedMap: map[string]string{
+				"k": "v",
 			},
 		},
 		Nested: nested{

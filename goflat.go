@@ -11,10 +11,12 @@ func flatten(val reflect.Value, prefix string, m map[string]interface{}) {
 		reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
 		reflect.Float32, reflect.Float64,
 		reflect.String, reflect.Bool:
-		if prefix == "" {
-			prefix = val.Type().Name()
+		if val.CanInterface() {
+			if prefix == "" {
+				prefix = val.Type().Name()
+			}
+			m[prefix] = val.Interface()
 		}
-		m[prefix] = val.Interface()
 	case reflect.Interface:
 		flatten(val.Elem(), prefix, m)
 	case reflect.Pointer:
@@ -28,7 +30,9 @@ func flatten(val reflect.Value, prefix string, m map[string]interface{}) {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 			reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64,
 			reflect.String, reflect.Bool:
-			m[prefix] = val.Interface()
+			if val.CanInterface() {
+				m[prefix] = val.Interface()
+			}
 		}
 	case reflect.Struct:
 		typ := val.Type()
