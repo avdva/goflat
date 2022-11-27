@@ -23,6 +23,7 @@ type testStruct struct {
 	M                 *map[string]string
 	Slice             []float64
 	Array             [3]float32
+	NilSlice          []int
 	notExportedInt    int
 	notExportedIface  privateInterface
 	notExportedStruct struct {
@@ -93,13 +94,62 @@ func newTestStruct() *testStruct {
 	}
 }
 
+type cycleMapTest struct {
+	m map[string]cycleMapTest2
+}
+
+type cycleMapTest2 struct {
+	m map[string]cycleMapTest
+}
+
 func TestFlatten(t *testing.T) {
 	ts := newTestStruct()
 	a := assert.New(t)
+	m := map[string]cycleMapTest{
+		"m": cycleMapTest{
+			m: map[string]cycleMapTest2{
+				"m2": cycleMapTest2{},
+			},
+		},
+	}
+	mm := m["m"]
+	mm.m = map[string]cycleMapTest2{
+		"m2": cycleMapTest2{
+			m: m,
+		},
+	}
+	m["m"] = mm
 	tests := []struct {
-		obj interface{}
-		exp map[string]interface{}
+		obj  interface{}
+		exp  map[string]interface{}
+		opts []Option
 	}{
+		{
+			obj: ts,
+			exp: map[string]interface{}{
+				"A":                  5,
+				"B":                  uint64(6),
+				"S.D":                "D",
+				"S.Ptr":              ts.S.Ptr,
+				"S.M.k":              123,
+				"Nested.Val":         true,
+				"embedded.S":         int8(123),
+				"Iface.Val":          "iface",
+				"PtrPtr":             ts.PtrPtr,
+				"M.key":              "value",
+				"Slice.0":            float64(26.05),
+				"Slice.1":            float64(1.1),
+				"Slice.2":            float64(23.12),
+				"NilSlice.":          nil,
+				"Array.0":            float32(1),
+				"Array.1":            float32(2),
+				"Array.2":            float32(3),
+				"notExportedPointer": nil,
+			},
+			opts: []Option{
+				ExpandUnexported(true),
+			},
+		},
 		{
 			obj: ts,
 			exp: map[string]interface{}{
@@ -109,22 +159,37 @@ func TestFlatten(t *testing.T) {
 				"S.Ptr":      ts.S.Ptr,
 				"S.M.k":      123,
 				"Nested.Val": true,
-				"embedded.S": int8(123),
 				"Iface.Val":  "iface",
 				"PtrPtr":     ts.PtrPtr,
 				"M.key":      "value",
 				"Slice.0":    float64(26.05),
 				"Slice.1":    float64(1.1),
 				"Slice.2":    float64(23.12),
+				"NilSlice.":  nil,
 				"Array.0":    float32(1),
 				"Array.1":    float32(2),
 				"Array.2":    float32(3),
+			},
+			opts: []Option{
+				ExpandUnexported(false),
 			},
 		},
 		{
 			obj: 5,
 			exp: map[string]interface{}{
 				"int": 5,
+			},
+		},
+		{
+			obj: m,
+			exp: map[string]interface{}{},
+		},
+		{
+			obj: []int{1, 2, 3},
+			exp: map[string]interface{}{
+				"0": 1,
+				"1": 2,
+				"2": 3,
 			},
 		},
 		{
@@ -135,18 +200,10 @@ func TestFlatten(t *testing.T) {
 				"a": "b",
 			},
 		},
-		{
-			obj: []int{1, 2, 3},
-			exp: map[string]interface{}{
-				"0": 1,
-				"1": 2,
-				"2": 3,
-			},
-		},
 	}
 	for i, test := range tests {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			a.Equal(test.exp, Flatten(test.obj))
+			a.Equal(test.exp, Flatten(test.obj, test.opts...))
 		})
 	}
 }
