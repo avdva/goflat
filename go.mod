@@ -1,4 +1,4 @@
-module goflat
+module github.com/avdva/goflat
 
 go 1.19
 
