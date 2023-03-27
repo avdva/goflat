@@ -3,55 +3,65 @@ package goflat
 import (
 	"reflect"
 	"strconv"
+	"strings"
 )
 
 type walker struct {
-	m       map[string]interface{}
+	cb      WalkFunc
 	visited map[uintptr]struct{}
 	o       *options
 }
 
-func newWalker() *walker {
+func newWalker(cb WalkFunc, o *options) *walker {
 	return &walker{
-		m:       make(map[string]interface{}),
+		cb:      cb,
 		visited: make(map[uintptr]struct{}),
-		o: &options{
-			delimeter:        ".",
-			expandUnexported: false,
-		},
+		o:       o,
 	}
 }
 
-func (w *walker) visit(val reflect.Value, prefix string) {
+func defaultOptions() *options {
+	return &options{
+		delimeter:        ".",
+		expandUnexported: false,
+	}
+}
+
+func (w *walker) run(val reflect.Value) {
+	path := make([]string, 0, 16)
+	w.visit(val, path)
+}
+
+func (w *walker) visit(val reflect.Value, path []string) {
 	switch val.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
 		reflect.Float32, reflect.Float64,
 		reflect.String, reflect.Bool:
-		w.visitSimple(val, prefix)
+		w.visitPrimitive(val, path)
 	case reflect.Interface:
-		w.visit(val.Elem(), prefix)
+		w.visit(val.Elem(), path)
 	case reflect.Pointer:
-		w.visitPointer(val, prefix)
+		w.visitPointer(val, path)
 	case reflect.Struct:
-		w.visitStruct(val, prefix)
+		w.visitStruct(val, path)
 	case reflect.Map:
-		w.visitMap(val, prefix)
+		w.visitMap(val, path)
 	case reflect.Slice, reflect.Array:
-		w.visitSliceOrArray(val, prefix)
+		w.visitSliceOrArray(val, path)
 	}
 }
 
-func (w *walker) visitSimple(val reflect.Value, prefix string) {
+func (w *walker) visitPrimitive(val reflect.Value, path []string) {
 	if val.CanInterface() {
-		if prefix == "" {
-			prefix = val.Type().Name()
+		if len(path) == 0 {
+			path = append(path, val.Type().Name())
 		}
-		w.m[prefix] = val.Interface()
+		w.cb(path, val.Interface())
 	}
 }
 
-func (w *walker) visitPointer(val reflect.Value, prefix string) {
+func (w *walker) visitPointer(val reflect.Value, path []string) {
 	var addedPtrs []uintptr
 	defer func() {
 		for _, ptr := range addedPtrs {
@@ -74,40 +84,37 @@ func (w *walker) visitPointer(val reflect.Value, prefix string) {
 	switch elem.Kind() {
 	case reflect.Struct, reflect.Interface, reflect.Map, reflect.Slice, reflect.Array, reflect.Invalid:
 		if !isNil {
-			w.visit(elem, prefix)
+			w.visit(elem, path)
 		} else if w.o.addNilContainers {
-			w.m[prefix] = nil
+			w.cb(path, nil)
 		}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64,
 		reflect.String, reflect.Bool:
 		if !isNil {
 			if val.CanInterface() {
-				w.m[prefix] = val.Interface()
+				w.cb(path, val.Interface())
 			}
 		} else if w.o.addNilFields {
-			w.m[prefix] = nil
+			w.cb(path, nil)
 		}
 	}
 }
 
-func (w *walker) visitStruct(val reflect.Value, prefix string) {
+func (w *walker) visitStruct(val reflect.Value, path []string) {
 	typ := val.Type()
-	if prefix != "" {
-		prefix += w.o.delimeter
-	}
 	for i := 0; i < typ.NumField(); i++ {
 		tf := typ.Field(i)
 		if tf.IsExported() || w.o.expandUnexported {
-			w.visit(val.Field(i), prefix+typ.Field(i).Name)
+			w.visit(val.Field(i), append(path, typ.Field(i).Name))
 		}
 	}
 }
 
-func (w *walker) visitMap(val reflect.Value, prefix string) {
+func (w *walker) visitMap(val reflect.Value, path []string) {
 	if val.IsNil() {
 		if w.o.addNilContainers {
-			w.m[prefix] = nil
+			w.cb(path, nil)
 		}
 		return
 	}
@@ -119,20 +126,17 @@ func (w *walker) visitMap(val reflect.Value, prefix string) {
 	typ := val.Type()
 	if typ.Key().Kind() == reflect.String {
 		keys := val.MapKeys()
-		if prefix != "" {
-			prefix += w.o.delimeter
-		}
 		for _, key := range keys {
-			w.visit(val.MapIndex(key), prefix+key.String())
+			w.visit(val.MapIndex(key), append(path, key.String()))
 		}
 	}
 }
 
-func (w *walker) visitSliceOrArray(val reflect.Value, prefix string) {
+func (w *walker) visitSliceOrArray(val reflect.Value, path []string) {
 	if val.Kind() == reflect.Slice {
 		if val.IsNil() {
 			if w.o.addNilContainers {
-				w.m[prefix] = nil
+				w.cb(path, nil)
 			}
 			return
 		}
@@ -142,11 +146,8 @@ func (w *walker) visitSliceOrArray(val reflect.Value, prefix string) {
 		w.visited[val.Pointer()] = struct{}{}
 		defer delete(w.visited, val.Pointer())
 	}
-	if prefix != "" {
-		prefix += w.o.delimeter
-	}
 	for i := 0; i < val.Len(); i++ {
-		w.visit(val.Index(i), prefix+strconv.Itoa(i))
+		w.visit(val.Index(i), append(path, strconv.Itoa(i)))
 	}
 }
 
@@ -192,11 +193,29 @@ func WithDelimeter(delim string) Option {
 // Flatten flattens a golang object.
 // It expands structs, maps, slices and arrays, uses '.' as a default field delimeter.
 func Flatten(obj interface{}, opts ...Option) map[string]interface{} {
-	w := newWalker()
+	o := defaultOptions()
 	for _, opt := range opts {
-		opt(w.o)
+		opt(o)
 	}
+	m := make(map[string]interface{})
+	w := newWalker(func(path []string, value interface{}) {
+		m[strings.Join(path, o.delimeter)] = value
+	}, o)
 	val := reflect.ValueOf(obj)
-	w.visit(val, "")
-	return w.m
+	w.run(val)
+	return m
+}
+
+// WalkFunc is a callback to be called for each value.
+type WalkFunc func(path []string, value interface{})
+
+// Walk calls cb for every member field of the obj.
+func Walk(obj interface{}, cb WalkFunc, opts ...Option) {
+	o := defaultOptions()
+	for _, opt := range opts {
+		opt(o)
+	}
+	w := newWalker(cb, o)
+	val := reflect.ValueOf(obj)
+	w.run(val)
 }

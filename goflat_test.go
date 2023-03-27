@@ -97,9 +97,15 @@ func newTestStruct() *testStruct {
 func TestFlatten(t *testing.T) {
 	ts := newTestStruct()
 
+	type kv struct {
+		path  []string
+		value interface{}
+	}
+
 	tests := []struct {
 		obj  interface{}
 		exp  map[string]interface{}
+		exp2 []kv
 		opts []Option
 	}{
 		{
@@ -123,6 +129,44 @@ func TestFlatten(t *testing.T) {
 				"Array.1":            float32(2),
 				"Array.2":            float32(3),
 				"notExportedPointer": nil,
+			},
+			exp2: []kv{
+				{
+					path:  []string{"A"},
+					value: 5,
+				},
+				{
+					path:  []string{"B"},
+					value: uint64(6),
+				},
+				{
+					path:  []string{"S", "D"},
+					value: "D",
+				},
+				{
+					path:  []string{"S", "Ptr"},
+					value: ts.S.Ptr,
+				},
+				{
+					path:  []string{"S", "M", "k"},
+					value: 123,
+				},
+				{
+					path:  []string{"Nested", "Val"},
+					value: true,
+				},
+				{
+					path:  []string{"embedded", "S"},
+					value: int8(123),
+				},
+				{
+					path:  []string{"Iface", "Val"},
+					value: "iface",
+				},
+				{
+					path:  []string{"PtrPtr"},
+					value: ts.PtrPtr,
+				},
 			},
 			opts: []Option{
 				ExpandUnexported(true),
