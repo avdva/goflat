@@ -101,6 +101,11 @@ func newTestStruct() *testStruct {
 		notExportedIface: &interfaceImpl{
 			Val: s,
 		},
+		notExportedStruct: struct {
+			A int
+		}{
+			A: 0,
+		},
 		notExportedPointer: &s,
 	}
 }
