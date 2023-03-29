@@ -2,6 +2,7 @@ package goflat
 
 import (
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -20,11 +21,14 @@ func newWalker(cb WalkFunc, o *options) *walker {
 	}
 }
 
-func defaultOptions() *options {
-	return &options{
-		delimeter:        ".",
-		expandUnexported: false,
+func makeOptions(opts ...Option) *options {
+	options := &options{
+		delimeter: ".",
 	}
+	for _, opt := range opts {
+		opt(options)
+	}
+	return options
 }
 
 func (w *walker) run(val reflect.Value) {
@@ -33,32 +37,73 @@ func (w *walker) run(val reflect.Value) {
 }
 
 func (w *walker) visit(val reflect.Value, path []string) {
-	switch val.Kind() {
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
-		reflect.Float32, reflect.Float64,
-		reflect.String, reflect.Bool:
-		w.visitPrimitive(val, path)
-	case reflect.Interface:
+	switch kind := val.Kind(); {
+	case kind >= reflect.Int && kind <= reflect.Int64:
+		w.visitInt(val, path)
+	case kind >= reflect.Uint8 && kind <= reflect.Uint64:
+		w.visitUint(val, path)
+	case kind == reflect.Float32:
+		w.visitPrimitive(float32(val.Float()), path)
+	case kind == reflect.Float64:
+		w.visitPrimitive(val.Float(), path)
+	case kind == reflect.Bool:
+		w.visitPrimitive(val.Bool(), path)
+	case kind == reflect.Complex64:
+		w.visitPrimitive(complex64(val.Complex()), path)
+	case kind == reflect.Complex128:
+		w.visitPrimitive(val.Complex(), path)
+	case kind == reflect.String:
+		w.visitPrimitive(val.String(), path)
+	case kind == reflect.Interface:
 		w.visit(val.Elem(), path)
-	case reflect.Pointer:
+	case kind == reflect.Pointer:
 		w.visitPointer(val, path)
-	case reflect.Struct:
+	case kind == reflect.Struct:
 		w.visitStruct(val, path)
-	case reflect.Map:
+	case kind == reflect.Map:
 		w.visitMap(val, path)
-	case reflect.Slice, reflect.Array:
+	case kind == reflect.Slice || kind == reflect.Array:
 		w.visitSliceOrArray(val, path)
 	}
 }
 
-func (w *walker) visitPrimitive(val reflect.Value, path []string) {
-	if val.CanInterface() {
-		if len(path) == 0 {
-			path = append(path, val.Type().Name())
-		}
-		w.cb(path, val.Interface())
+func (w *walker) visitInt(val reflect.Value, path []string) {
+	iVal := val.Int()
+	switch val.Kind() {
+	case reflect.Int:
+		w.visitPrimitive(int(iVal), path)
+	case reflect.Int8:
+		w.visitPrimitive(int8(iVal), path)
+	case reflect.Int16:
+		w.visitPrimitive(int16(iVal), path)
+	case reflect.Int32:
+		w.visitPrimitive(int32(iVal), path)
+	case reflect.Int64:
+		w.visitPrimitive(int64(iVal), path)
 	}
+}
+
+func (w *walker) visitUint(val reflect.Value, path []string) {
+	iVal := val.Uint()
+	switch val.Kind() {
+	case reflect.Uint:
+		w.visitPrimitive(uint(iVal), path)
+	case reflect.Uint8:
+		w.visitPrimitive(uint8(iVal), path)
+	case reflect.Uint16:
+		w.visitPrimitive(uint16(iVal), path)
+	case reflect.Uint32:
+		w.visitPrimitive(uint32(iVal), path)
+	case reflect.Uint64:
+		w.visitPrimitive(uint64(iVal), path)
+	}
+}
+
+func (w *walker) visitPrimitive(val interface{}, path []string) {
+	if len(path) == 0 {
+		path = []string{"."}
+	}
+	w.cb(path, val)
 }
 
 func (w *walker) visitPointer(val reflect.Value, path []string) {
@@ -126,6 +171,11 @@ func (w *walker) visitMap(val reflect.Value, path []string) {
 	typ := val.Type()
 	if typ.Key().Kind() == reflect.String {
 		keys := val.MapKeys()
+		if w.o.sortMapKeys {
+			sort.Slice(keys, func(i, j int) bool {
+				return keys[i].String() < keys[j].String()
+			})
+		}
 		for _, key := range keys {
 			w.visit(val.MapIndex(key), append(path, key.String()))
 		}
@@ -156,6 +206,7 @@ type options struct {
 	delimeter        string
 	addNilContainers bool
 	addNilFields     bool
+	sortMapKeys      bool
 }
 
 // Option allows to customise flattening
@@ -183,39 +234,38 @@ func AddNilFields(add bool) Option {
 	}
 }
 
-// WithDelimeter option set a field delimeter. '.' is the default delimeter.
+// WithDelimeter option sets a field delimeter. '.' is the default delimeter.
 func WithDelimeter(delim string) Option {
 	return func(o *options) {
 		o.delimeter = delim
 	}
 }
 
+// SortMapKeys option, if set, will force sorting of map keys before visiting.
+func SortMapKeys(sort bool) Option {
+	return func(o *options) {
+		o.sortMapKeys = sort
+	}
+}
+
 // Flatten flattens a golang object.
 // It expands structs, maps, slices and arrays, uses '.' as a default field delimeter.
 func Flatten(obj interface{}, opts ...Option) map[string]interface{} {
-	o := defaultOptions()
-	for _, opt := range opts {
-		opt(o)
-	}
 	m := make(map[string]interface{})
-	w := newWalker(func(path []string, value interface{}) {
+	o := makeOptions(opts...)
+	w := newWalker(func(path []string, value interface{}) bool {
 		m[strings.Join(path, o.delimeter)] = value
+		return true
 	}, o)
-	val := reflect.ValueOf(obj)
-	w.run(val)
+	w.run(reflect.ValueOf(obj))
 	return m
 }
 
 // WalkFunc is a callback to be called for each value.
-type WalkFunc func(path []string, value interface{})
+type WalkFunc func(path []string, value interface{}) bool
 
 // Walk calls cb for every member field of the obj.
 func Walk(obj interface{}, cb WalkFunc, opts ...Option) {
-	o := defaultOptions()
-	for _, opt := range opts {
-		opt(o)
-	}
-	w := newWalker(cb, o)
-	val := reflect.ValueOf(obj)
-	w.run(val)
+	w := newWalker(cb, makeOptions(opts...))
+	w.run(reflect.ValueOf(obj))
 }

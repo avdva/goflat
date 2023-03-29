@@ -1,6 +1,33 @@
 # goflat
 The package allows flattening of complex Go objects.
 
+## Badges
+
+![Build Status](https://github.com/avdva/goflat/workflows/golangci-lint/badge.svg)
+[![Go Report Card](https://goreportcard.com/badge/github.com/avdva/goflat)](https://goreportcard.com/report/github.com/avdva/goflat)
+
+## Installation
+
+To start using this package, run:
+
+```sh
+$ go get github.com/avdva/goflat
+```
+
+## API
+
+```go
+
+opts := ExpandUnexported(true), AddNilContainers(true), AddNilFields(true), SortMapKeys(true)
+
+// Walk will call the callback with corresponding path and value for all objects of primitive types of
+// structs, pointers, arrays, slices and maps(those having string keys).
+Walk(object, func(path []string, value interface{}) {}, opts...)
+
+// Flatten will build a map from element's path to a value.
+Flatten(object, opts...)
+```
+
 ## Example
 The following structure
 ```go

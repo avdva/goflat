@@ -2,6 +2,7 @@ package goflat
 
 import (
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -24,6 +25,8 @@ type testStruct struct {
 	Slice             []float64
 	Array             [3]float32
 	NilSlice          []int
+	Complex64         complex64
+	Complex128        complex128
 	notExportedInt    int
 	notExportedIface  privateInterface
 	notExportedStruct struct {
@@ -56,6 +59,7 @@ func newTestStruct() *testStruct {
 	ss := map[string]string{
 		"key": "value",
 	}
+	s := "string"
 	return &testStruct{
 		A: 5,
 		B: 6,
@@ -91,46 +95,135 @@ func newTestStruct() *testStruct {
 		Array: [3]float32{
 			1, 2, 3,
 		},
+		Complex64:      complex(1, 2),
+		Complex128:     complex(3, 4),
+		notExportedInt: 123,
+		notExportedIface: &interfaceImpl{
+			Val: s,
+		},
+		notExportedPointer: &s,
 	}
+}
+
+type pathValue struct {
+	path  []string
+	value interface{}
 }
 
 func TestFlatten(t *testing.T) {
 	ts := newTestStruct()
 
-	type kv struct {
-		path  []string
-		value interface{}
-	}
-
 	tests := []struct {
 		obj  interface{}
-		exp  map[string]interface{}
-		exp2 []kv
+		exp  []pathValue
 		opts []Option
 	}{
 		{
 			obj: ts,
-			exp: map[string]interface{}{
-				"A":                  5,
-				"B":                  uint64(6),
-				"S.D":                "D",
-				"S.Ptr":              ts.S.Ptr,
-				"S.M.k":              123,
-				"Nested.Val":         true,
-				"embedded.S":         int8(123),
-				"Iface.Val":          "iface",
-				"PtrPtr":             ts.PtrPtr,
-				"M.key":              "value",
-				"Slice.0":            float64(26.05),
-				"Slice.1":            float64(1.1),
-				"Slice.2":            float64(23.12),
-				"NilSlice":           nil,
-				"Array.0":            float32(1),
-				"Array.1":            float32(2),
-				"Array.2":            float32(3),
-				"notExportedPointer": nil,
+			exp: []pathValue{
+				{
+					path:  []string{"A"},
+					value: 5,
+				},
+				{
+					path:  []string{"B"},
+					value: uint64(6),
+				},
+				{
+					path:  []string{"S", "D"},
+					value: "D",
+				},
+				{
+					path:  []string{"S", "Ptr"},
+					value: ts.S.Ptr,
+				},
+				{
+					path:  []string{"S", "M", "k"},
+					value: 123,
+				},
+				{
+					path:  []string{"S", "notExportedMap", "k"},
+					value: "v",
+				},
+				{
+					path:  []string{"Nested", "Val"},
+					value: true,
+				},
+				{
+					path:  []string{"embedded", "S"},
+					value: int8(123),
+				},
+				{
+					path:  []string{"Iface", "Val"},
+					value: "iface",
+				},
+				{
+					path:  []string{"PtrPtr"},
+					value: ts.PtrPtr,
+				},
+				{
+					path:  []string{"M", "key"},
+					value: "value",
+				},
+				{
+					path:  []string{"Slice", "0"},
+					value: float64(26.05),
+				},
+				{
+					path:  []string{"Slice", "1"},
+					value: float64(1.1),
+				},
+				{
+					path:  []string{"Slice", "2"},
+					value: float64(23.12),
+				},
+				{
+					path:  []string{"Array", "0"},
+					value: float32(1),
+				},
+				{
+					path:  []string{"Array", "1"},
+					value: float32(2),
+				},
+				{
+					path:  []string{"Array", "2"},
+					value: float32(3),
+				},
+				{
+					path:  []string{"NilSlice"},
+					value: nil,
+				},
+				{
+					path:  []string{"Complex64"},
+					value: complex64(complex(1, 2)),
+				},
+				{
+					path:  []string{"Complex128"},
+					value: complex(3, 4),
+				},
+				{
+					path:  []string{"notExportedInt"},
+					value: 123,
+				},
+				{
+					path:  []string{"notExportedIface", "Val"},
+					value: "string",
+				},
+				{
+					path:  []string{"notExportedStruct", "A"},
+					value: 0,
+				},
 			},
-			exp2: []kv{
+			opts: []Option{
+				ExpandUnexported(true),
+				AddNilContainers(true),
+				AddNilFields(true),
+				SortMapKeys(true),
+			},
+		},
+		{
+			obj: ts,
+			exp: []pathValue{
 				{
 					path:  []string{"A"},
 					value: 5,
@@ -156,8 +249,86 @@ func TestFlatten(t *testing.T) {
 					value: true,
 				},
 				{
-					path:  []string{"embedded", "S"},
-					value: int8(123),
+					path:  []string{"Iface", "Val"},
+					value: "iface",
+				},
+				{
+					path:  []string{"PtrPtr"},
+					value: ts.PtrPtr,
+				},
+				{
+					path:  []string{"M", "key"},
+					value: "value",
+				},
+				{
+					path:  []string{"Slice", "0"},
+					value: float64(26.05),
+				},
+				{
+					path:  []string{"Slice", "1"},
+					value: float64(1.1),
+				},
+				{
+					path:  []string{"Slice", "2"},
+					value: float64(23.12),
+				},
+				{
+					path:  []string{"Array", "0"},
+					value: float32(1),
+				},
+				{
+					path:  []string{"Array", "1"},
+					value: float32(2),
+				},
+				{
+					path:  []string{"Array", "2"},
+					value: float32(3),
+				},
+				{
+					path:  []string{"NilSlice"},
+					value: nil,
+				},
+				{
+					path:  []string{"Complex64"},
+					value: complex64(complex(1, 2)),
+				},
+				{
+					path:  []string{"Complex128"},
+					value: complex(3, 4),
+				},
+			},
+			opts: []Option{
+				ExpandUnexported(false),
+				AddNilContainers(true),
+				AddNilFields(false),
+			},
+		},
+		{
+			obj: ts,
+			exp: []pathValue{
+				{
+					path:  []string{"A"},
+					value: 5,
+				},
+				{
+					path:  []string{"B"},
+					value: uint64(6),
+				},
+				{
+					path:  []string{"S", "D"},
+					value: "D",
+				},
+				{
+					path:  []string{"S", "Ptr"},
+					value: ts.S.Ptr,
+				},
+				{
+					path:  []string{"S", "M", "k"},
+					value: 123,
+				},
+				{
+					path:  []string{"Nested", "Val"},
+					value: true,
 				},
 				{
 					path:  []string{"Iface", "Val"},
@@ -167,57 +338,42 @@ func TestFlatten(t *testing.T) {
 					path:  []string{"PtrPtr"},
 					value: ts.PtrPtr,
 				},
-			},
-			opts: []Option{
-				ExpandUnexported(true),
-				AddNilContainers(true),
-				AddNilFields(true),
-			},
-		},
-		{
-			obj: ts,
-			exp: map[string]interface{}{
-				"A":          5,
-				"B":          uint64(6),
-				"S.D":        "D",
-				"S.Ptr":      ts.S.Ptr,
-				"S.M.k":      123,
-				"Nested.Val": true,
-				"Iface.Val":  "iface",
-				"PtrPtr":     ts.PtrPtr,
-				"M.key":      "value",
-				"Slice.0":    float64(26.05),
-				"Slice.1":    float64(1.1),
-				"Slice.2":    float64(23.12),
-				"NilSlice":   nil,
-				"Array.0":    float32(1),
-				"Array.1":    float32(2),
-				"Array.2":    float32(3),
-			},
-			opts: []Option{
-				ExpandUnexported(false),
-				AddNilContainers(true),
-				AddNilFields(false),
-			},
-		},
-		{
-			obj: ts,
-			exp: map[string]interface{}{
-				"A":          5,
-				"B":          uint64(6),
-				"S.D":        "D",
-				"S.Ptr":      ts.S.Ptr,
-				"S.M.k":      123,
-				"Nested.Val": true,
-				"Iface.Val":  "iface",
-				"PtrPtr":     ts.PtrPtr,
-				"M.key":      "value",
-				"Slice.0":    float64(26.05),
-				"Slice.1":    float64(1.1),
-				"Slice.2":    float64(23.12),
-				"Array.0":    float32(1),
-				"Array.1":    float32(2),
-				"Array.2":    float32(3),
+				{
+					path:  []string{"M", "key"},
+					value: "value",
+				},
+				{
+					path:  []string{"Slice", "0"},
+					value: float64(26.05),
+				},
+				{
+					path:  []string{"Slice", "1"},
+					value: float64(1.1),
+				},
+				{
+					path:  []string{"Slice", "2"},
+					value: float64(23.12),
+				},
+				{
+					path:  []string{"Array", "0"},
+					value: float32(1),
+				},
+				{
+					path:  []string{"Array", "1"},
+					value: float32(2),
+				},
+				{
+					path:  []string{"Array", "2"},
+					value: float32(3),
+				},
+				{
+					path:  []string{"Complex64"},
+					value: complex64(complex(1, 2)),
+				},
+				{
+					path:  []string{"Complex128"},
+					value: complex(3, 4),
+				},
 			},
 			opts: []Option{
 				ExpandUnexported(false),
@@ -227,31 +383,58 @@ func TestFlatten(t *testing.T) {
 		},
 		{
 			obj: 5,
-			exp: map[string]interface{}{
-				"int": 5,
+			exp: []pathValue{
+				{
+					path:  []string{"."},
+					value: 5,
+				},
 			},
 		},
 		{
 			obj: []int{1, 2, 3},
-			exp: map[string]interface{}{
-				"0": 1,
-				"1": 2,
-				"2": 3,
+			exp: []pathValue{
+				{
+					path:  []string{"0"},
+					value: 1,
+				},
+				{
+					path:  []string{"1"},
+					value: 2,
+				},
+				{
+					path:  []string{"2"},
+					value: 3,
+				},
 			},
 		},
 		{
 			obj: map[string]string{
 				"a": "b",
 			},
-			exp: map[string]interface{}{
-				"a": "b",
+			exp: []pathValue{
+				{
+					path:  []string{"a"},
+					value: "b",
+				},
 			},
 		},
 	}
-	for i, test := range tests {
+	for i := range tests {
+		idx := i
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			test := tests[idx]
 			a := assert.New(t)
-			a.Equal(test.exp, Flatten(test.obj, test.opts...))
+			var slice []pathValue
+			m := make(map[string]interface{})
+			Walk(test.obj, func(path []string, value interface{}) bool {
+				p := make([]string, len(path))
+				copy(p, path)
+				slice = append(slice, pathValue{path: p, value: value})
+				m[strings.Join(path, ".")] = value
+				return true
+			}, test.opts...)
+			a.Equal(test.exp, slice)
+			a.Equal(m, Flatten(test.obj, test.opts...))
 		})
 	}
 }
@@ -281,4 +464,27 @@ func TestCyclicMap(t *testing.T) {
 	}
 	m["m"] = mm
 	a.Equal(map[string]interface{}{}, Flatten(m))
+}
+
+func TestSortMapKeys(t *testing.T) {
+	m := make(map[string]string)
+	var exp, act []pathValue
+	for r := 'a'; r <= 'z'; r++ {
+		s := string(r)
+		m[s] = s
+		exp = append(exp, pathValue{
+			path:  []string{s},
+			value: s,
+		})
+	}
+	Walk(m, func(path []string, value interface{}) bool {
+		p := make([]string, len(path))
+		copy(p, path)
+		act = append(act, pathValue{
+			path:  p,
+			value: value,
+		})
+		return true
+	}, SortMapKeys(true))
+	assert.Equal(t, exp, act)
 }
