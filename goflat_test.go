@@ -5,110 +5,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/avdva/goflat/testpkg"
+
 	"github.com/stretchr/testify/assert"
 )
-
-type testStruct struct {
-	A int
-	B uint64
-	S struct {
-		D              string
-		Ptr            *int
-		M              map[string]int
-		notExportedMap map[string]string
-	}
-	Nested nested
-	embedded
-	Iface             privateInterface
-	PtrPtr            **int
-	M                 *map[string]string
-	Slice             []float64
-	Array             [3]float32
-	NilSlice          []int
-	Complex64         complex64
-	Complex128        complex128
-	notExportedInt    int
-	notExportedIface  privateInterface
-	notExportedStruct struct {
-		A int
-	}
-	notExportedPointer *string
-}
-
-type embedded struct {
-	S int8
-}
-
-type nested struct {
-	Val bool
-}
-
-type privateInterface interface {
-	f()
-}
-
-type interfaceImpl struct {
-	Val string
-}
-
-func (impl *interfaceImpl) f() {}
-
-func newTestStruct() *testStruct {
-	i := 123
-	ptr := &i
-	ss := map[string]string{
-		"key": "value",
-	}
-	s := "string"
-	return &testStruct{
-		A: 5,
-		B: 6,
-		S: struct {
-			D              string
-			Ptr            *int
-			M              map[string]int
-			notExportedMap map[string]string
-		}{
-			D:   "D",
-			Ptr: ptr,
-			M: map[string]int{
-				"k": 123,
-			},
-			notExportedMap: map[string]string{
-				"k": "v",
-			},
-		},
-		Nested: nested{
-			Val: true,
-		},
-		embedded: embedded{
-			S: 123,
-		},
-		Iface: &interfaceImpl{
-			Val: "iface",
-		},
-		PtrPtr: &ptr,
-		M:      &ss,
-		Slice: []float64{
-			26.05, 1.1, 23.12,
-		},
-		Array: [3]float32{
-			1, 2, 3,
-		},
-		Complex64:      complex(1, 2),
-		Complex128:     complex(3, 4),
-		notExportedInt: 123,
-		notExportedIface: &interfaceImpl{
-			Val: s,
-		},
-		notExportedStruct: struct {
-			A int
-		}{
-			A: 0,
-		},
-		notExportedPointer: &s,
-	}
-}
 
 type pathValue struct {
 	path  []string
@@ -116,7 +16,7 @@ type pathValue struct {
 }
 
 func TestFlatten(t *testing.T) {
-	ts := newTestStruct()
+	ts := testpkg.NewTestStruct()
 
 	tests := []struct {
 		obj  interface{}
@@ -217,6 +117,10 @@ func TestFlatten(t *testing.T) {
 				{
 					path:  []string{"notExportedStruct", "A"},
 					value: 0,
+				},
+				{
+					path:  []string{"notExportedPointer"},
+					value: "string",
 				},
 			},
 			opts: []Option{
@@ -390,7 +294,7 @@ func TestFlatten(t *testing.T) {
 			obj: 5,
 			exp: []pathValue{
 				{
-					path:  []string{"."},
+					path:  []string{},
 					value: 5,
 				},
 			},
@@ -492,4 +396,22 @@ func TestSortMapKeys(t *testing.T) {
 		return true
 	}, SortMapKeys(true))
 	assert.Equal(t, exp, act)
+}
+
+func TestWalkStop(t *testing.T) {
+	st := testpkg.NewTestStruct()
+	var total int
+	opts := []Option{AddNilContainers(true), AddNilFields(true), ExpandUnexported(true)}
+	Walk(st, func([]string, interface{}) bool {
+		total++
+		return true
+	}, opts...)
+	for i := 0; i < total; i++ {
+		var current int
+		Walk(st, func([]string, interface{}) bool {
+			current++
+			return current <= i
+		}, opts...)
+		assert.Equal(t, i+1, current)
+	}
 }

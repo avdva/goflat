@@ -36,77 +36,77 @@ func (w *walker) run(val reflect.Value) {
 	w.visit(val, path)
 }
 
-func (w *walker) visit(val reflect.Value, path []string) {
+func (w *walker) visit(val reflect.Value, path []string) (cont bool) {
 	switch kind := val.Kind(); {
 	case kind >= reflect.Int && kind <= reflect.Int64:
-		w.visitInt(val, path)
+		cont = w.visitInt(val, path)
 	case kind >= reflect.Uint8 && kind <= reflect.Uint64:
-		w.visitUint(val, path)
+		cont = w.visitUint(val, path)
 	case kind == reflect.Float32:
-		w.visitPrimitive(float32(val.Float()), path)
+		cont = w.visitPrimitive(float32(val.Float()), path)
 	case kind == reflect.Float64:
-		w.visitPrimitive(val.Float(), path)
+		cont = w.visitPrimitive(val.Float(), path)
 	case kind == reflect.Bool:
-		w.visitPrimitive(val.Bool(), path)
+		cont = w.visitPrimitive(val.Bool(), path)
 	case kind == reflect.Complex64:
-		w.visitPrimitive(complex64(val.Complex()), path)
+		cont = w.visitPrimitive(complex64(val.Complex()), path)
 	case kind == reflect.Complex128:
-		w.visitPrimitive(val.Complex(), path)
+		cont = w.visitPrimitive(val.Complex(), path)
 	case kind == reflect.String:
-		w.visitPrimitive(val.String(), path)
+		cont = w.visitPrimitive(val.String(), path)
 	case kind == reflect.Interface:
-		w.visit(val.Elem(), path)
+		cont = w.visit(val.Elem(), path)
 	case kind == reflect.Pointer:
-		w.visitPointer(val, path)
+		cont = w.visitPointer(val, path)
 	case kind == reflect.Struct:
-		w.visitStruct(val, path)
+		cont = w.visitStruct(val, path)
 	case kind == reflect.Map:
-		w.visitMap(val, path)
+		cont = w.visitMap(val, path)
 	case kind == reflect.Slice || kind == reflect.Array:
-		w.visitSliceOrArray(val, path)
+		cont = w.visitSliceOrArray(val, path)
 	}
+	return cont
 }
 
-func (w *walker) visitInt(val reflect.Value, path []string) {
+func (w *walker) visitInt(val reflect.Value, path []string) (cont bool) {
 	iVal := val.Int()
 	switch val.Kind() {
 	case reflect.Int:
-		w.visitPrimitive(int(iVal), path)
+		cont = w.visitPrimitive(int(iVal), path)
 	case reflect.Int8:
-		w.visitPrimitive(int8(iVal), path)
+		cont = w.visitPrimitive(int8(iVal), path)
 	case reflect.Int16:
-		w.visitPrimitive(int16(iVal), path)
+		cont = w.visitPrimitive(int16(iVal), path)
 	case reflect.Int32:
-		w.visitPrimitive(int32(iVal), path)
+		cont = w.visitPrimitive(int32(iVal), path)
 	case reflect.Int64:
-		w.visitPrimitive(int64(iVal), path)
+		cont = w.visitPrimitive(int64(iVal), path)
 	}
+	return cont
 }
 
-func (w *walker) visitUint(val reflect.Value, path []string) {
+func (w *walker) visitUint(val reflect.Value, path []string) (cont bool) {
 	iVal := val.Uint()
 	switch val.Kind() {
 	case reflect.Uint:
-		w.visitPrimitive(uint(iVal), path)
+		cont = w.visitPrimitive(uint(iVal), path)
 	case reflect.Uint8:
-		w.visitPrimitive(uint8(iVal), path)
+		cont = w.visitPrimitive(uint8(iVal), path)
 	case reflect.Uint16:
-		w.visitPrimitive(uint16(iVal), path)
+		cont = w.visitPrimitive(uint16(iVal), path)
 	case reflect.Uint32:
-		w.visitPrimitive(uint32(iVal), path)
+		cont = w.visitPrimitive(uint32(iVal), path)
 	case reflect.Uint64:
-		w.visitPrimitive(uint64(iVal), path)
+		cont = w.visitPrimitive(uint64(iVal), path)
 	}
+	return cont
 }
 
-func (w *walker) visitPrimitive(val interface{}, path []string) {
-	if len(path) == 0 {
-		path = []string{"."}
-	}
-	w.cb(path, val)
+func (w *walker) visitPrimitive(val interface{}, path []string) (cont bool) {
+	return w.cb(path, val)
 }
 
-func (w *walker) visitPointer(val reflect.Value, path []string) {
+func (w *walker) visitPointer(val reflect.Value, path []string) (cont bool) {
 	var addedPtrs []uintptr
 	defer func() {
 		for _, ptr := range addedPtrs {
@@ -117,7 +117,7 @@ func (w *walker) visitPointer(val reflect.Value, path []string) {
 	var isNil bool
 	for elem.Kind() == reflect.Pointer {
 		if _, found := w.visited[elem.Pointer()]; found {
-			return
+			return true
 		}
 		if elem.IsNil() {
 			isNil = true
@@ -129,42 +129,50 @@ func (w *walker) visitPointer(val reflect.Value, path []string) {
 	switch elem.Kind() {
 	case reflect.Struct, reflect.Interface, reflect.Map, reflect.Slice, reflect.Array, reflect.Invalid:
 		if !isNil {
-			w.visit(elem, path)
+			return w.visit(elem, path)
 		} else if w.o.addNilContainers {
-			w.cb(path, nil)
+			return w.cb(path, nil)
 		}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64,
+		reflect.Complex64, reflect.Complex128,
 		reflect.String, reflect.Bool:
 		if !isNil {
 			if val.CanInterface() {
-				w.cb(path, val.Interface())
+				return w.cb(path, val.Interface())
+			} else {
+				return w.visit(elem, path)
 			}
 		} else if w.o.addNilFields {
-			w.cb(path, nil)
+			return w.cb(path, nil)
 		}
 	}
+	return true
 }
 
-func (w *walker) visitStruct(val reflect.Value, path []string) {
+func (w *walker) visitStruct(val reflect.Value, path []string) (cont bool) {
 	typ := val.Type()
 	for i := 0; i < typ.NumField(); i++ {
 		tf := typ.Field(i)
 		if tf.IsExported() || w.o.expandUnexported {
-			w.visit(val.Field(i), append(path, typ.Field(i).Name))
+			if !w.visit(val.Field(i), append(path, typ.Field(i).Name)) {
+				return false
+			}
 		}
 	}
+	return true
 }
 
-func (w *walker) visitMap(val reflect.Value, path []string) {
+func (w *walker) visitMap(val reflect.Value, path []string) (cont bool) {
 	if val.IsNil() {
 		if w.o.addNilContainers {
-			w.cb(path, nil)
+			return w.cb(path, nil)
 		}
-		return
+		return true
 	}
 	if _, found := w.visited[val.Pointer()]; found {
-		return
+		return true
 	}
 	w.visited[val.Pointer()] = struct{}{}
 	defer delete(w.visited, val.Pointer())
@@ -177,28 +185,34 @@ func (w *walker) visitMap(val reflect.Value, path []string) {
 			})
 		}
 		for _, key := range keys {
-			w.visit(val.MapIndex(key), append(path, key.String()))
+			if !w.visit(val.MapIndex(key), append(path, key.String())) {
+				return false
+			}
 		}
 	}
+	return true
 }
 
-func (w *walker) visitSliceOrArray(val reflect.Value, path []string) {
+func (w *walker) visitSliceOrArray(val reflect.Value, path []string) (cont bool) {
 	if val.Kind() == reflect.Slice {
 		if val.IsNil() {
 			if w.o.addNilContainers {
-				w.cb(path, nil)
+				return w.cb(path, nil)
 			}
-			return
+			return true
 		}
 		if _, found := w.visited[val.Pointer()]; found {
-			return
+			return true
 		}
 		w.visited[val.Pointer()] = struct{}{}
 		defer delete(w.visited, val.Pointer())
 	}
 	for i := 0; i < val.Len(); i++ {
-		w.visit(val.Index(i), append(path, strconv.Itoa(i)))
+		if !w.visit(val.Index(i), append(path, strconv.Itoa(i))) {
+			return false
+		}
 	}
+	return true
 }
 
 type options struct {
