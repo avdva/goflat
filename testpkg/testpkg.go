@@ -133,6 +133,7 @@ func NewPointerTestStruct() *PointerTestStruct {
 		unexportedStruct: &SmallStruct{
 			Data: &flt,
 		},
-		unexportedSlice: []int{1, 2, 3},
+		unexportedNilStruct: nil,
+		unexportedSlice:     []int{1, 2, 3},
 	}
 }

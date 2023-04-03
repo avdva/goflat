@@ -272,9 +272,17 @@ func (w *walker) visitSliceOrArray(val reflect.Value, path []string) (cont bool)
 }
 
 const (
+	// PointerPolicyBoth: WalkFunc will be called for both pointer (when possible) and underlying value.
 	PointerPolicyBoth = iota
+	// PointerPolicyJustPointer: WalkFunc will be called for pointer only (when possible).
+	// To walk the underlying value, Walk() with that value should be called.
 	PointerPolicyJustPointer
+	// PointerPolicyJustValue: WalkFunc will be called for the value only.
 	PointerPolicyJustValue
+	// PointerPolicyFollowComplexOnly: WalkFunc will be called with a pointer arg only for
+	// simple data types like ints, floats, complex values, booleans, pointers, strings.
+	// For more complex types (e.g. structs) Walk follows the pointer and calls WalkFunc
+	// with underlying objects only. This is the default policy.
 	PointerPolicyFollowComplexOnly
 )
 
@@ -337,6 +345,7 @@ func SortMapKeys(sort bool) Option {
 	}
 }
 
+// WithPointerFllowPolicy option specifies how to handle pointer types. See PointerPolicy* consts.
 func WithPointerFllowPolicy(policy int8) Option {
 	return func(o *options) {
 		o.pointerFollowPolicy = policy
