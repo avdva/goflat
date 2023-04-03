@@ -101,3 +101,38 @@ func NewTestStruct() *testStruct {
 		notExportedPointer: &s,
 	}
 }
+
+type SmallStruct struct {
+	Data *float64
+}
+
+type PointerTestStruct struct {
+	IntPtr              *int
+	IntPtrPtr           **int
+	unexportedString    *string
+	unexportedNil       *string
+	ExportedStruct      *SmallStruct
+	unexportedStruct    *SmallStruct
+	unexportedNilStruct *SmallStruct
+	unexportedSlice     []int
+}
+
+func NewPointerTestStruct() *PointerTestStruct {
+	intPtr := new(int)
+	*intPtr = 5
+	s := "hello"
+	flt := 123.456
+	return &PointerTestStruct{
+		IntPtr:           intPtr,
+		IntPtrPtr:        &intPtr,
+		unexportedString: &s,
+		unexportedNil:    nil,
+		ExportedStruct: &SmallStruct{
+			Data: &flt,
+		},
+		unexportedStruct: &SmallStruct{
+			Data: &flt,
+		},
+		unexportedSlice: []int{1, 2, 3},
+	}
+}

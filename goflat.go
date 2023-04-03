@@ -21,16 +21,6 @@ func newWalker(cb WalkFunc, o *options) *walker {
 	}
 }
 
-func makeOptions(opts ...Option) *options {
-	options := &options{
-		delimeter: ".",
-	}
-	for _, opt := range opts {
-		opt(options)
-	}
-	return options
-}
-
 func (w *walker) run(val reflect.Value) {
 	path := make([]string, 0, 16)
 	w.visit(val, path)
@@ -113,9 +103,9 @@ func (w *walker) visitPointer(val reflect.Value, path []string) (cont bool) {
 			delete(w.visited, ptr)
 		}
 	}()
-	elem := val
 	var isNil bool
-	for elem.Kind() == reflect.Pointer {
+	elem := val
+	for ; elem.Kind() == reflect.Pointer; elem = elem.Elem() {
 		if _, found := w.visited[elem.Pointer()]; found {
 			return true
 		}
@@ -124,10 +114,43 @@ func (w *walker) visitPointer(val reflect.Value, path []string) (cont bool) {
 		}
 		w.visited[elem.Pointer()] = struct{}{}
 		addedPtrs = append(addedPtrs, elem.Pointer())
-		elem = elem.Elem()
 	}
-	switch elem.Kind() {
-	case reflect.Struct, reflect.Interface, reflect.Map, reflect.Slice, reflect.Array, reflect.Invalid:
+	if isNil {
+		if val.CanInterface() {
+			return w.cb(path, val.Interface())
+		}
+		return w.cb(path, reflect.New(val.Type()).Elem().Interface())
+	}
+	switch w.o.pointerFollowPolicy {
+	case PointerPolicyJustPointer:
+		if val.CanInterface() {
+			if !w.cb(path, val.Interface()) {
+				return
+			}
+		}
+	case PointerPolicyFollowComplexOnly:
+		if isComplex(elem.Kind()) {
+			return w.visit(elem, path)
+		} else {
+			if val.CanInterface() {
+				if !w.cb(path, val.Interface()) {
+					return
+				}
+			}
+		}
+	case PointerPolicyBoth:
+		if val.CanInterface() {
+			if !w.cb(path, val.Interface()) {
+				return
+			}
+		}
+		fallthrough
+	case PointerPolicyJustValue:
+		return w.visit(elem, path)
+	}
+
+	/*switch elem.Kind() {
+	case reflect.Struct, reflect.Interface, reflect.Map, reflect.Slice, reflect.Array:
 		if !isNil {
 			return w.visit(elem, path)
 		} else if w.o.addNilContainers {
@@ -147,8 +170,41 @@ func (w *walker) visitPointer(val reflect.Value, path []string) (cont bool) {
 		} else if w.o.addNilFields {
 			return w.cb(path, nil)
 		}
-	}
+	}*/
 	return true
+}
+
+func isComplex(kind reflect.Kind) bool {
+	info := []bool{
+		false, // Invalid
+		false, // Bool
+		false, // Int
+		false, // Int8
+		false, // Int16
+		false, // Int32
+		false, // Int64
+		false, // Uint
+		false, // Uint8
+		false, // Uint16
+		false, // Uint32
+		false, // Uint64
+		false, // Uintptr
+		false, // Float32
+		false, // Float64
+		false, // Complex64
+		false, // Complex128
+		true,  // Array
+		true,  // Chan
+		true,  // Func
+		true,  // Interface
+		true,  // Map
+		false, // Pointer
+		true,  // Slice
+		false, // String
+		true,  // Struct
+		false, // UnsafePointer
+	}
+	return info[int(kind)]
 }
 
 func (w *walker) visitStruct(val reflect.Value, path []string) (cont bool) {
@@ -215,12 +271,31 @@ func (w *walker) visitSliceOrArray(val reflect.Value, path []string) (cont bool)
 	return true
 }
 
+const (
+	PointerPolicyBoth = iota
+	PointerPolicyJustPointer
+	PointerPolicyJustValue
+	PointerPolicyFollowComplexOnly
+)
+
 type options struct {
-	expandUnexported bool
-	delimeter        string
-	addNilContainers bool
-	addNilFields     bool
-	sortMapKeys      bool
+	expandUnexported    bool
+	delimeter           string
+	addNilContainers    bool
+	addNilFields        bool
+	sortMapKeys         bool
+	pointerFollowPolicy int8
+}
+
+func makeOptions(opts ...Option) *options {
+	options := &options{
+		delimeter:           ".",
+		pointerFollowPolicy: PointerPolicyFollowComplexOnly,
+	}
+	for _, opt := range opts {
+		opt(options)
+	}
+	return options
 }
 
 // Option allows to customise flattening
@@ -259,6 +334,12 @@ func WithDelimeter(delim string) Option {
 func SortMapKeys(sort bool) Option {
 	return func(o *options) {
 		o.sortMapKeys = sort
+	}
+}
+
+func WithPointerFllowPolicy(policy int8) Option {
+	return func(o *options) {
+		o.pointerFollowPolicy = policy
 	}
 }
 

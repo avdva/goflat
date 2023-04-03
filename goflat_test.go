@@ -15,7 +15,111 @@ type pathValue struct {
 	value interface{}
 }
 
-func TestFlatten(t *testing.T) {
+func TestPointerPolicy(t *testing.T) {
+	ts := testpkg.NewPointerTestStruct()
+
+	tests := []struct {
+		obj    interface{}
+		exp    []pathValue
+		policy int8
+	}{
+		{
+			obj:    ts,
+			policy: PointerPolicyJustPointer,
+			exp: []pathValue{
+				{path: []string{}, value: ts},
+			},
+		},
+		{
+			obj:    *ts,
+			policy: PointerPolicyJustPointer,
+			exp: []pathValue{
+				{path: []string{"IntPtr"}, value: ts.IntPtr},
+				{path: []string{"IntPtrPtr"}, value: ts.IntPtrPtr},
+				{path: []string{"unexportedNil"}, value: (*string)(nil)},
+				{path: []string{"ExportedStruct"}, value: ts.ExportedStruct},
+				{path: []string{"unexportedNilStruct"}, value: (*testpkg.SmallStruct)(nil)},
+				{path: []string{"unexportedSlice", "0"}, value: 1},
+				{path: []string{"unexportedSlice", "1"}, value: 2},
+				{path: []string{"unexportedSlice", "2"}, value: 3},
+			},
+		},
+		{
+			obj:    ts,
+			policy: PointerPolicyJustValue,
+			exp: []pathValue{
+				{path: []string{"IntPtr"}, value: 5},
+				{path: []string{"IntPtrPtr"}, value: 5},
+				{path: []string{"unexportedString"}, value: "hello"},
+				{path: []string{"unexportedNil"}, value: (*string)(nil)},
+				{path: []string{"ExportedStruct", "Data"}, value: 123.456},
+				{path: []string{"unexportedStruct", "Data"}, value: 123.456},
+				{path: []string{"unexportedNilStruct"}, value: (*testpkg.SmallStruct)(nil)},
+				{path: []string{"unexportedSlice", "0"}, value: 1},
+				{path: []string{"unexportedSlice", "1"}, value: 2},
+				{path: []string{"unexportedSlice", "2"}, value: 3},
+			},
+		},
+		{
+			obj:    ts,
+			policy: PointerPolicyFollowComplexOnly,
+			exp: []pathValue{
+				{path: []string{"IntPtr"}, value: ts.IntPtr},
+				{path: []string{"IntPtrPtr"}, value: ts.IntPtrPtr},
+				{path: []string{"unexportedNil"}, value: (*string)(nil)},
+				{path: []string{"ExportedStruct", "Data"}, value: ts.ExportedStruct.Data},
+				{path: []string{"unexportedNilStruct"}, value: (*testpkg.SmallStruct)(nil)},
+				{path: []string{"unexportedSlice", "0"}, value: 1},
+				{path: []string{"unexportedSlice", "1"}, value: 2},
+				{path: []string{"unexportedSlice", "2"}, value: 3},
+			},
+		},
+		{
+			obj:    ts,
+			policy: PointerPolicyBoth,
+			exp: []pathValue{
+				{path: []string{}, value: ts},
+				{path: []string{"IntPtr"}, value: ts.IntPtr},
+				{path: []string{"IntPtr"}, value: 5},
+				{path: []string{"IntPtrPtr"}, value: ts.IntPtrPtr},
+				{path: []string{"IntPtrPtr"}, value: 5},
+				{path: []string{"unexportedString"}, value: "hello"},
+				{path: []string{"unexportedNil"}, value: (*string)(nil)},
+				{path: []string{"ExportedStruct"}, value: ts.ExportedStruct},
+				{path: []string{"ExportedStruct", "Data"}, value: ts.ExportedStruct.Data},
+				{path: []string{"ExportedStruct", "Data"}, value: 123.456},
+				{path: []string{"unexportedStruct", "Data"}, value: 123.456},
+				{path: []string{"unexportedNilStruct"}, value: (*testpkg.SmallStruct)(nil)},
+				{path: []string{"unexportedSlice", "0"}, value: 1},
+				{path: []string{"unexportedSlice", "1"}, value: 2},
+				{path: []string{"unexportedSlice", "2"}, value: 3},
+			},
+		},
+	}
+	commonOpts := []Option{
+		ExpandUnexported(true),
+		AddNilContainers(true),
+		AddNilFields(true),
+		SortMapKeys(true),
+	}
+	for i := range tests {
+		idx := i
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			test := tests[idx]
+			a := assert.New(t)
+			var slice []pathValue
+			Walk(test.obj, func(path []string, value interface{}) bool {
+				p := make([]string, len(path))
+				copy(p, path)
+				slice = append(slice, pathValue{path: p, value: value})
+				return true
+			}, append(commonOpts, WithPointerFllowPolicy(test.policy))...)
+			a.Equal(test.exp, slice)
+		})
+	}
+}
+
+func TestWalkFlatten(t *testing.T) {
 	ts := testpkg.NewTestStruct()
 
 	tests := []struct {
@@ -26,6 +130,10 @@ func TestFlatten(t *testing.T) {
 		{
 			obj: ts,
 			exp: []pathValue{
+				{
+					path:  []string{},
+					value: ts,
+				},
 				{
 					path:  []string{"A"},
 					value: 5,
@@ -41,6 +149,10 @@ func TestFlatten(t *testing.T) {
 				{
 					path:  []string{"S", "Ptr"},
 					value: ts.S.Ptr,
+				},
+				{
+					path:  []string{"S", "Ptr"},
+					value: *ts.S.Ptr,
 				},
 				{
 					path:  []string{"S", "M", "k"},
@@ -59,12 +171,24 @@ func TestFlatten(t *testing.T) {
 					value: int8(123),
 				},
 				{
+					path:  []string{"Iface"},
+					value: ts.Iface,
+				},
+				{
 					path:  []string{"Iface", "Val"},
 					value: "iface",
 				},
 				{
 					path:  []string{"PtrPtr"},
 					value: ts.PtrPtr,
+				},
+				{
+					path:  []string{"PtrPtr"},
+					value: **ts.PtrPtr,
+				},
+				{
+					path:  []string{"M"},
+					value: ts.M,
 				},
 				{
 					path:  []string{"M", "key"},
@@ -128,6 +252,7 @@ func TestFlatten(t *testing.T) {
 				AddNilContainers(true),
 				AddNilFields(true),
 				SortMapKeys(true),
+				WithPointerFllowPolicy(PointerPolicyBoth),
 			},
 		},
 		{
@@ -210,6 +335,7 @@ func TestFlatten(t *testing.T) {
 				ExpandUnexported(false),
 				AddNilContainers(true),
 				AddNilFields(false),
+				WithPointerFllowPolicy(PointerPolicyFollowComplexOnly),
 			},
 		},
 		{
@@ -288,6 +414,7 @@ func TestFlatten(t *testing.T) {
 				ExpandUnexported(false),
 				AddNilContainers(false),
 				AddNilFields(false),
+				WithPointerFllowPolicy(PointerPolicyFollowComplexOnly),
 			},
 		},
 		{
