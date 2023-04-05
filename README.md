@@ -18,12 +18,13 @@ $ go get github.com/avdva/goflat
 
 ```go
 
-opts :=
-	ExpandUnexported(true),					// go inside unexported fields
-	AddNilContainers(true),					// include nil maps/slices
-	AddNilFields(true),						// include nil pointers to primitive types
-	SortMapKeys(true)	   					// sort map keys before visiting a map
-	WithPointerFllowPolicy(PointerPolicyBoth) // how to handle pointers. see PointerPolicy* consts. 
+opts := []Option{
+	ExpandUnexported(true),                    // go inside unexported fields
+	AddNilContainers(true),                    // include nil maps/slices
+	AddNilFields(true),                        // include nil pointers to primitive types
+	SortMapKeys(true),                         // sort map keys before visiting a map
+	WithPointerFllowPolicy(PointerPolicyBoth), // how to handle pointers. see PointerPolicy* consts.
+}
 
 // Walk will call the the callback with corresponding path and value for all objects inside the root value object.
 Walk(object, func(path []string, value interface{}) {}, opts...)
