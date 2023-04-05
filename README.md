@@ -26,7 +26,8 @@ opts := []Option{
 	WithPointerFllowPolicy(PointerPolicyBoth), // how to handle pointers. see PointerPolicy* consts.
 }
 
-// Walk will call the the callback with corresponding path and value for all objects inside the root value object.
+// Walk will call the the callback with corresponding path and value
+// for all objects inside the root value object.
 Walk(object, func(path []string, value interface{}) {}, opts...)
 
 // Flatten will build a map from element's path to a value.
