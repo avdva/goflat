@@ -128,15 +128,15 @@ func (w *walker) visitPointer(val reflect.Value, path []string) (cont bool) {
 				return
 			}
 		}
-	case PointerPolicyFollowComplexOnly:
-		if isComplex(elem.Kind()) {
-			return w.visit(elem, path)
-		} else {
+	case PointerPolicyPrimitivePointer:
+		if isPrimitive(elem.Kind()) {
 			if val.CanInterface() {
 				if !w.cb(path, val.Interface()) {
 					return
 				}
 			}
+		} else {
+			return w.visit(elem, path)
 		}
 	case PointerPolicyBoth:
 		if val.CanInterface() {
@@ -148,63 +148,40 @@ func (w *walker) visitPointer(val reflect.Value, path []string) (cont bool) {
 	case PointerPolicyJustValue:
 		return w.visit(elem, path)
 	}
-
-	/*switch elem.Kind() {
-	case reflect.Struct, reflect.Interface, reflect.Map, reflect.Slice, reflect.Array:
-		if !isNil {
-			return w.visit(elem, path)
-		} else if w.o.addNilContainers {
-			return w.cb(path, nil)
-		}
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
-		reflect.Float32, reflect.Float64,
-		reflect.Complex64, reflect.Complex128,
-		reflect.String, reflect.Bool:
-		if !isNil {
-			if val.CanInterface() {
-				return w.cb(path, val.Interface())
-			} else {
-				return w.visit(elem, path)
-			}
-		} else if w.o.addNilFields {
-			return w.cb(path, nil)
-		}
-	}*/
 	return true
 }
 
-func isComplex(kind reflect.Kind) bool {
-	info := []bool{
-		false, // Invalid
-		false, // Bool
-		false, // Int
-		false, // Int8
-		false, // Int16
-		false, // Int32
-		false, // Int64
-		false, // Uint
-		false, // Uint8
-		false, // Uint16
-		false, // Uint32
-		false, // Uint64
-		false, // Uintptr
-		false, // Float32
-		false, // Float64
-		false, // Complex64
-		false, // Complex128
-		true,  // Array
-		true,  // Chan
-		true,  // Func
-		true,  // Interface
-		true,  // Map
-		false, // Pointer
-		true,  // Slice
-		false, // String
-		true,  // Struct
-		false, // UnsafePointer
+func isPrimitive(kind reflect.Kind) bool {
+	primitives := []bool{
+		true,  // Invalid
+		true,  // Bool
+		true,  // Int
+		true,  // Int8
+		true,  // Int16
+		true,  // Int32
+		true,  // Int64
+		true,  // Uint
+		true,  // Uint8
+		true,  // Uint16
+		true,  // Uint32
+		true,  // Uint64
+		true,  // Uintptr
+		true,  // Float32
+		true,  // Float64
+		true,  // Complex64
+		true,  // Complex128
+		false, // Array
+		false, // Chan
+		false, // Func
+		false, // Interface
+		false, // Map
+		true,  // Pointer
+		false, // Slice
+		true,  // String
+		false, // Struct
+		true,  // UnsafePointer
 	}
-	return info[int(kind)]
+	return primitives[int(kind)]
 }
 
 func (w *walker) visitStruct(val reflect.Value, path []string) (cont bool) {
@@ -275,15 +252,15 @@ const (
 	// PointerPolicyBoth: WalkFunc will be called for both pointer (when possible) and underlying value.
 	PointerPolicyBoth = iota
 	// PointerPolicyJustPointer: WalkFunc will be called for pointer only (when possible).
-	// To walk the underlying value, Walk() with that value should be called.
+	// To walk the underlying value, call Walk() with that value should be called.
 	PointerPolicyJustPointer
 	// PointerPolicyJustValue: WalkFunc will be called for the value only.
 	PointerPolicyJustValue
-	// PointerPolicyFollowComplexOnly: WalkFunc will be called with a pointer arg only for
-	// simple data types like ints, floats, complex values, booleans, pointers, strings.
+	// PointerPolicyPrimitivePointer: WalkFunc will be called with a pointer arg only for
+	// simple data types like ints, floats, complex's, booleans, pointers, strings.
 	// For more complex types (e.g. structs) Walk follows the pointer and calls WalkFunc
 	// with underlying objects only. This is the default policy.
-	PointerPolicyFollowComplexOnly
+	PointerPolicyPrimitivePointer
 )
 
 type options struct {
@@ -298,7 +275,7 @@ type options struct {
 func makeOptions(opts ...Option) *options {
 	options := &options{
 		delimeter:           ".",
-		pointerFollowPolicy: PointerPolicyFollowComplexOnly,
+		pointerFollowPolicy: PointerPolicyPrimitivePointer,
 	}
 	for _, opt := range opts {
 		opt(options)

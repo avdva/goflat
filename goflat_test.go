@@ -62,7 +62,7 @@ func TestPointerPolicy(t *testing.T) {
 		},
 		{
 			obj:    ts,
-			policy: PointerPolicyFollowComplexOnly,
+			policy: PointerPolicyPrimitivePointer,
 			exp: []pathValue{
 				{path: []string{"IntPtr"}, value: ts.IntPtr},
 				{path: []string{"IntPtrPtr"}, value: ts.IntPtrPtr},
@@ -335,7 +335,7 @@ func TestWalkFlatten(t *testing.T) {
 				ExpandUnexported(false),
 				AddNilContainers(true),
 				AddNilFields(false),
-				WithPointerFllowPolicy(PointerPolicyFollowComplexOnly),
+				WithPointerFllowPolicy(PointerPolicyPrimitivePointer),
 			},
 		},
 		{
@@ -414,7 +414,7 @@ func TestWalkFlatten(t *testing.T) {
 				ExpandUnexported(false),
 				AddNilContainers(false),
 				AddNilFields(false),
-				WithPointerFllowPolicy(PointerPolicyFollowComplexOnly),
+				WithPointerFllowPolicy(PointerPolicyPrimitivePointer),
 			},
 		},
 		{
